@@ -1,0 +1,43 @@
+name: 競合コインランドリー稼働モニタリング
+
+on:
+  schedule:
+    # 毎日 6:00〜23:50 JST の間、10分間隔で実行
+    # GitHub Actions は UTC なので JST-9h = UTC 21:00〜14:50
+    # cron は5分刻みが最小だが、実際の実行間隔はGitHub側で調整される
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # 手動実行も可能
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python scraper.py
+
+      - name: Commit and push DB changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/competitor_monitor.db
+          # DB に変更があるときだけ commit
+          git diff --cached --quiet || git commit -m "data: scrape $(TZ=Asia/Tokyo date +'%Y-%m-%d %H:%M')"
+          git pull --rebase
+          git push
